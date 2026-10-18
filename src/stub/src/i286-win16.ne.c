@@ -308,6 +308,24 @@ static int running_on_wine(void) {
     return 0;
 }
 
+static int source_is_claimed(const char *source_path) {
+    OFSTRUCT info;
+    HFILE file;
+    char marker;
+    file = OpenFile(source_path, &info, OF_READ | OF_SHARE_DENY_NONE);
+    if (file == HFILE_ERROR)
+        return 0;
+    if (_lread(file, &marker, 1) != 1)
+        marker = 0;
+    _lclose(file);
+    return marker == '!';
+}
+
+static int file_exists(const char *name) {
+    OFSTRUCT info;
+    return OpenFile(name, &info, OF_EXIST) != HFILE_ERROR;
+}
+
 int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, int show) {
     char target[260];
     char source_path[260];
@@ -336,6 +354,12 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
     launch[j] = 0;
 
     child_result = WinExec(launch, show);
+    if (source_path[0] != 0 && running_on_wine() && source_is_claimed(source_path)) {
+        while (file_exists(source_path))
+            Yield();
+        delete_file(target);
+        return 0;
+    }
     if (child_result < 32) {
         if (running_on_wine()) {
             if (source_path[0] != 0)
