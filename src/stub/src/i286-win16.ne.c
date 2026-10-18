@@ -34,13 +34,6 @@ typedef struct {
     unsigned long adler_s2;
 } Output;
 
-typedef struct {
-    WORD environment;
-    LPSTR command_line;
-    LPVOID show;
-    DWORD reserved;
-} LoadParams16;
-
 static unsigned get_u16(const unsigned char *p) { return p[0] | ((unsigned)p[1] << 8); }
 
 static unsigned long get_u32(const unsigned char *p) {
@@ -274,88 +267,42 @@ done:
     return ok;
 }
 
-static UINT load_child(HINSTANCE instance, const char *target, const char FAR *arguments,
-                       int show) {
-    static const char variable[] = "UPX16_SOURCE=";
+static int write_source_path(HINSTANCE instance, const char *target, char *source_path) {
     char self_name[260];
-    char load_command[128];
-    WORD show_command[2];
-    LoadParams16 parameters;
-    LPSTR old_environment;
-    LPSTR new_environment = 0;
-    HGLOBAL environment_block = 0;
-    unsigned environment_size = 0;
-    unsigned argument_size = 0;
-    unsigned variable_size = 0;
-    unsigned i;
-    unsigned j;
-    HINSTANCE result;
-
-    while (arguments[argument_size] != 0 && argument_size < sizeof(load_command) - 2)
-        ++argument_size;
-    load_command[0] = (char)argument_size;
-    for (i = 0; i < argument_size; ++i)
-        load_command[i + 1] = arguments[i];
-    load_command[argument_size + 1] = 0;
-    show_command[0] = 2;
-    show_command[1] = (WORD)show;
-    parameters.environment = 0;
-    parameters.command_line = (LPSTR)load_command;
-    parameters.show = (LPVOID)show_command;
-    parameters.reserved = 0;
-
-    if (GetModuleFileName(instance, self_name, sizeof(self_name))) {
-        old_environment = GetDOSEnvironment();
-        while (environment_size < 0x7f00U &&
-               (old_environment[environment_size] != 0 ||
-                old_environment[environment_size + 1] != 0))
-            ++environment_size;
-        if (environment_size < 0x7f00U) {
-            ++environment_size;
-            while (variable[variable_size] != 0)
-                ++variable_size;
-            for (j = 0; self_name[j] != 0; ++j)
-                ;
-            variable_size += j;
-            environment_block = GlobalAlloc(GMEM_FIXED | GMEM_ZEROINIT,
-                                              environment_size + variable_size + 2);
-            if (environment_block != 0) {
-                new_environment = (LPSTR)GlobalLock(environment_block);
-                for (i = 0; i < environment_size; ++i)
-                    new_environment[i] = old_environment[i];
-                for (i = 0; variable[i] != 0; ++i)
-                    new_environment[environment_size + i] = variable[i];
-                for (j = 0; self_name[j] != 0; ++j)
-                    new_environment[environment_size + i + j] = self_name[j];
-                parameters.environment = SELECTOROF(new_environment);
-            }
-        }
-    }
-    result = LoadModule(target, &parameters);
-    if (environment_block != 0) {
-        GlobalUnlock(environment_block);
-        GlobalFree(environment_block);
-    }
-    return (UINT)result;
-}
-
-static int running_on_wine(void) {
-    HMODULE kernel = GetModuleHandle("KERNEL");
-    char kernel_name[128];
     HFILE file;
-    if (kernel == 0 || !GetModuleFileName(kernel, kernel_name, sizeof(kernel_name)))
+    unsigned i;
+
+    for (i = 0; target[i] != 0 && i + 1 < 260; ++i)
+        source_path[i] = target[i];
+    source_path[i] = 0;
+    if (i < 3 || !GetModuleFileName(instance, self_name, sizeof(self_name)))
         return 0;
-    file = _lopen(kernel_name, OF_READ);
+    source_path[i - 3] = 'S';
+    source_path[i - 2] = 'R';
+    source_path[i - 1] = 'C';
+    file = _lcreat(source_path, 0);
     if (file == HFILE_ERROR)
-        return 1;
+        return 0;
+    for (i = 0; self_name[i] != 0; ++i)
+        ;
+    if (_lwrite(file, self_name, i) != i) {
+        _lclose(file);
+        delete_file(source_path);
+        source_path[0] = 0;
+        return 0;
+    }
     _lclose(file);
-    return 0;
+    return 1;
 }
 
 int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, int show) {
     char target[260];
+    char source_path[260];
+    char launch[390];
     HINSTANCE child;
     UINT child_result;
+    unsigned i;
+    unsigned j;
 
     (void)previous;
     target[0] = 0;
@@ -364,14 +311,22 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
         return 1;
     }
 
-    child_result = load_child(instance, target, command_line, show);
+    source_path[0] = 0;
+    write_source_path(instance, target, source_path);
+    for (i = 0, j = 0; target[i] != 0 && j + 2 < sizeof(launch); ++i)
+        launch[j++] = target[i];
+    if (command_line[0] != 0) {
+        launch[j++] = ' ';
+        for (i = 0; command_line[i] != 0 && j + 1 < sizeof(launch); ++i)
+            launch[j++] = command_line[i];
+    }
+    launch[j] = 0;
+
+    child_result = WinExec(launch, show);
     if (child_result < 32) {
         delete_file(target);
-        /* Wine's Win16 LoadModule can return an error after a short-lived
-         * child has already run successfully. Native Windows follows the
-         * documented return-value contract, so retain its useful dialog. */
-        if (running_on_wine())
-            return 0;
+        if (source_path[0] != 0)
+            delete_file(source_path);
         MessageBox(0, "Cannot start the unpacked program.", "UPX", MB_OK | MB_ICONSTOP);
         return 1;
     }
@@ -379,5 +334,7 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
     while (GetModuleUsage(child) != 0)
         Yield();
     delete_file(target);
+    if (source_path[0] != 0)
+        delete_file(source_path);
     return 0;
 }
