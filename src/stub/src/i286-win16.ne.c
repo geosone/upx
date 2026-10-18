@@ -326,6 +326,19 @@ static int file_exists(const char *name) {
     return OpenFile(name, &info, OF_EXIST) != HFILE_ERROR;
 }
 
+/* A Win16 task must return to GetMessage so cooperative peers can run. Wine
+   can retain the Win16 mutex across a tight Yield loop, preventing the
+   extracted program from creating its window or completing cleanup. */
+static void wait_tick(void) {
+    MSG message;
+    UINT timer = SetTimer(0, 1, 100, 0);
+    if (timer != 0) {
+        GetMessage(&message, 0, WM_TIMER, WM_TIMER);
+        KillTimer(0, timer);
+    } else
+        Yield();
+}
+
 int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, int show) {
     char target[260];
     char source_path[260];
@@ -356,7 +369,7 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
     child_result = WinExec(launch, show);
     if (source_path[0] != 0 && running_on_wine() && source_is_claimed(source_path)) {
         while (file_exists(source_path))
-            Yield();
+            wait_tick();
         delete_file(target);
         return 0;
     }
@@ -364,7 +377,7 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
         if (running_on_wine()) {
             if (source_path[0] != 0)
                 while (!delete_file(source_path))
-                    Yield();
+                    wait_tick();
             delete_file(target);
             return 0;
         }
@@ -376,7 +389,7 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
     }
     child = (HINSTANCE)child_result;
     while (GetModuleUsage(child) != 0)
-        Yield();
+        wait_tick();
     delete_file(target);
     if (source_path[0] != 0)
         delete_file(source_path);
