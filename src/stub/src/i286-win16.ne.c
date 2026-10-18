@@ -8,7 +8,6 @@
  */
 
 #include <windows.h>
-#include <stdlib.h>
 
 #define TRAILER_SIZE 32
 #define INPUT_SIZE 1024
@@ -18,7 +17,6 @@
 static unsigned char input_buffer[INPUT_SIZE];
 static unsigned char output_buffer[OUTPUT_SIZE];
 static unsigned char window_buffer[WINDOW_SIZE];
-static char source_environment[280];
 
 typedef struct {
     HFILE file;
@@ -272,7 +270,6 @@ done:
 int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, int show) {
     char target[260];
     char launch[390];
-    char self_name[260];
     HINSTANCE child;
     UINT child_result;
     unsigned i;
@@ -294,10 +291,6 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
     }
     launch[j] = 0;
 
-    if (GetModuleFileName(instance, self_name, sizeof(self_name))) {
-        wsprintf(source_environment, "UPX16_SOURCE=%s", (LPSTR)self_name);
-        putenv(source_environment);
-    }
     child_result = WinExec(launch, show);
     if (child_result < 32) {
         delete_file(target);
