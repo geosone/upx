@@ -572,7 +572,7 @@ using upx::tribool;
 #define UPX_F_TMT_ADAM            8
 #define UPX_F_W32PE_I386          9
 #define UPX_F_LINUX_i386          10
-// #define UPX_F_WIN16_NE            11 // NOT IMPLEMENTED
+#define UPX_F_WIN16_NE            11
 #define UPX_F_LINUX_ELF_i386      12
 // #define UPX_F_LINUX_SEP_i386      13 // NOT IMPLEMENTED
 #define UPX_F_LINUX_SH_i386       14

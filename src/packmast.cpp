@@ -53,6 +53,7 @@
 #include "p_vmlinx.h"
 #include "p_vmlinz.h"
 #include "p_w32pe_i386.h"
+#include "p_w16ne.h"
 #include "p_w64pe_amd64.h"
 #include "p_w64pe_arm64.h"
 #include "p_wcle.h"
@@ -171,6 +172,7 @@ PackerBase *PackMaster::visitAllPackers(visit_func_t func, InputFile *f, const O
         VISIT(PackTmt);
         VISIT(PackWcle);
         // Windows
+        VISIT(PackW16Ne);
         // VISIT(PackW64PeArm64EC); // NOT YET IMPLEMENTED
         VISIT(PackW64PeArm64);
         VISIT(PackW64PeAmd64);

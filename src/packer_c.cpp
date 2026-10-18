@@ -40,7 +40,6 @@
     }
     switch (format) {
     case 6:   // UPX_F_VXD_LE               6 // NOT IMPLEMENTED
-    case 11:  // UPX_F_WIN16_NE            11 // NOT IMPLEMENTED
     case 13:  // UPX_F_LINUX_SEP_i386      13 // NOT IMPLEMENTED
     case 17:  // UPX_F_ELKS_8086           17 // NOT IMPLEMENTED
     case 38:  // UPX_F_MACH_PPC64LE        38 // DOES NOT EXIST
