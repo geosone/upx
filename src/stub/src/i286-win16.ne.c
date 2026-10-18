@@ -34,6 +34,13 @@ typedef struct {
     unsigned long adler_s2;
 } Output;
 
+typedef struct {
+    WORD environment;
+    LPSTR command_line;
+    LPVOID show;
+    DWORD reserved;
+} LoadParams16;
+
 static unsigned get_u16(const unsigned char *p) { return p[0] | ((unsigned)p[1] << 8); }
 
 static unsigned long get_u32(const unsigned char *p) {
@@ -267,13 +274,75 @@ done:
     return ok;
 }
 
-int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, int show) {
-    char target[260];
-    char launch[390];
-    HINSTANCE child;
-    UINT child_result;
+static UINT load_child(HINSTANCE instance, const char *target, const char FAR *arguments,
+                       int show) {
+    static const char variable[] = "UPX16_SOURCE=";
+    char self_name[260];
+    char load_command[128];
+    WORD show_command[2];
+    LoadParams16 parameters;
+    LPSTR old_environment;
+    LPSTR new_environment = 0;
+    HGLOBAL environment_block = 0;
+    unsigned environment_size = 0;
+    unsigned argument_size = 0;
+    unsigned variable_size = 0;
     unsigned i;
     unsigned j;
+    HINSTANCE result;
+
+    while (arguments[argument_size] != 0 && argument_size < sizeof(load_command) - 2)
+        ++argument_size;
+    load_command[0] = (char)argument_size;
+    for (i = 0; i < argument_size; ++i)
+        load_command[i + 1] = arguments[i];
+    load_command[argument_size + 1] = 0;
+    show_command[0] = 2;
+    show_command[1] = (WORD)show;
+    parameters.environment = 0;
+    parameters.command_line = (LPSTR)load_command;
+    parameters.show = (LPVOID)show_command;
+    parameters.reserved = 0;
+
+    if (GetModuleFileName(instance, self_name, sizeof(self_name))) {
+        old_environment = GetDOSEnvironment();
+        while (environment_size < 0x7f00U &&
+               (old_environment[environment_size] != 0 ||
+                old_environment[environment_size + 1] != 0))
+            ++environment_size;
+        if (environment_size < 0x7f00U) {
+            ++environment_size;
+            while (variable[variable_size] != 0)
+                ++variable_size;
+            for (j = 0; self_name[j] != 0; ++j)
+                ;
+            variable_size += j;
+            environment_block = GlobalAlloc(GMEM_FIXED | GMEM_ZEROINIT,
+                                              environment_size + variable_size + 2);
+            if (environment_block != 0) {
+                new_environment = (LPSTR)GlobalLock(environment_block);
+                for (i = 0; i < environment_size; ++i)
+                    new_environment[i] = old_environment[i];
+                for (i = 0; variable[i] != 0; ++i)
+                    new_environment[environment_size + i] = variable[i];
+                for (j = 0; self_name[j] != 0; ++j)
+                    new_environment[environment_size + i + j] = self_name[j];
+                parameters.environment = SELECTOROF(new_environment);
+            }
+        }
+    }
+    result = LoadModule(target, &parameters);
+    if (environment_block != 0) {
+        GlobalUnlock(environment_block);
+        GlobalFree(environment_block);
+    }
+    return (UINT)result;
+}
+
+int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, int show) {
+    char target[260];
+    HINSTANCE child;
+    UINT child_result;
 
     (void)previous;
     target[0] = 0;
@@ -282,16 +351,7 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
         return 1;
     }
 
-    for (i = 0, j = 0; target[i] != 0 && j + 2 < sizeof(launch); ++i)
-        launch[j++] = target[i];
-    if (command_line[0] != 0) {
-        launch[j++] = ' ';
-        for (i = 0; command_line[i] != 0 && j + 1 < sizeof(launch); ++i)
-            launch[j++] = command_line[i];
-    }
-    launch[j] = 0;
-
-    child_result = WinExec(launch, show);
+    child_result = load_child(instance, target, command_line, show);
     if (child_result < 32) {
         delete_file(target);
         MessageBox(0, "Cannot start the unpacked program.", "UPX", MB_OK | MB_ICONSTOP);
