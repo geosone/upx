@@ -46,12 +46,15 @@ protected:
     virtual Linker *newLinker() const override;
 
     int readFileHeader();
+    bool readPackTrailer(bool strict);
 
     static constexpr unsigned DOS_HEADER_SIZE = 64;
     static constexpr unsigned NE_HEADER_SIZE = 64;
 
     byte ne_header[NE_HEADER_SIZE] = {};
     unsigned ne_offset = 0;
+    unsigned original_prefix_size = 0;
+    unsigned packed_stub_size = 0;
 };
 
 /* vim:set ts=4 sw=4 et: */
