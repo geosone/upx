@@ -295,6 +295,19 @@ static int write_source_path(HINSTANCE instance, const char *target, char *sourc
     return 1;
 }
 
+static int running_on_wine(void) {
+    HMODULE kernel = GetModuleHandle("KERNEL");
+    char kernel_name[128];
+    HFILE file;
+    if (kernel == 0 || !GetModuleFileName(kernel, kernel_name, sizeof(kernel_name)))
+        return 0;
+    file = _lopen(kernel_name, OF_READ);
+    if (file == HFILE_ERROR)
+        return 1;
+    _lclose(file);
+    return 0;
+}
+
 int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, int show) {
     char target[260];
     char source_path[260];
@@ -327,6 +340,8 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
         delete_file(target);
         if (source_path[0] != 0)
             delete_file(source_path);
+        if (running_on_wine())
+            return 0;
         MessageBox(0, "Cannot start the unpacked program.", "UPX", MB_OK | MB_ICONSTOP);
         return 1;
     }
