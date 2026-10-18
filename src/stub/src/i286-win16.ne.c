@@ -41,9 +41,9 @@ static unsigned long get_u32(const unsigned char *p) {
            ((unsigned long)p[3] << 24);
 }
 
-static void delete_file(const char *name) {
+static int delete_file(const char *name) {
     OFSTRUCT info;
-    OpenFile(name, &info, OF_DELETE);
+    return OpenFile(name, &info, OF_DELETE) != HFILE_ERROR;
 }
 
 static int input_byte(Input *in, unsigned *value) {
@@ -337,11 +337,16 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
 
     child_result = WinExec(launch, show);
     if (child_result < 32) {
+        if (running_on_wine()) {
+            if (source_path[0] != 0)
+                while (!delete_file(source_path))
+                    Yield();
+            delete_file(target);
+            return 0;
+        }
         delete_file(target);
         if (source_path[0] != 0)
             delete_file(source_path);
-        if (running_on_wine())
-            return 0;
         MessageBox(0, "Cannot start the unpacked program.", "UPX", MB_OK | MB_ICONSTOP);
         return 1;
     }
