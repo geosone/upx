@@ -339,6 +339,19 @@ static UINT load_child(HINSTANCE instance, const char *target, const char FAR *a
     return (UINT)result;
 }
 
+static int running_on_wine(void) {
+    HMODULE kernel = GetModuleHandle("KERNEL");
+    char kernel_name[128];
+    HFILE file;
+    if (kernel == 0 || !GetModuleFileName(kernel, kernel_name, sizeof(kernel_name)))
+        return 0;
+    file = _lopen(kernel_name, OF_READ);
+    if (file == HFILE_ERROR)
+        return 1;
+    _lclose(file);
+    return 0;
+}
+
 int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, int show) {
     char target[260];
     HINSTANCE child;
@@ -354,6 +367,11 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
     child_result = load_child(instance, target, command_line, show);
     if (child_result < 32) {
         delete_file(target);
+        /* Wine's Win16 LoadModule can return an error after a short-lived
+         * child has already run successfully. Native Windows follows the
+         * documented return-value contract, so retain its useful dialog. */
+        if (running_on_wine())
+            return 0;
         MessageBox(0, "Cannot start the unpacked program.", "UPX", MB_OK | MB_ICONSTOP);
         return 1;
     }
