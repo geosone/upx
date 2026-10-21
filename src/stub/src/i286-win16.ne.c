@@ -46,6 +46,14 @@ static int delete_file(const char *name) {
     return OpenFile(name, &info, OF_DELETE) != HFILE_ERROR;
 }
 
+/* 1 when the file is deleted or not there; an open (shared) file is not */
+static int delete_until_gone(const char *name) {
+    OFSTRUCT info;
+    if (OpenFile(name, &info, OF_DELETE) != HFILE_ERROR)
+        return 1;
+    return info.nErrCode == 2 || info.nErrCode == 3;
+}
+
 static int input_byte(Input *in, unsigned *value) {
     unsigned count;
     if (in->remaining == 0)
@@ -344,6 +352,8 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
     char source_path[260];
     char launch[390];
     HINSTANCE child;
+    HMODULE module;
+    char loaded[260];
     UINT child_result;
     unsigned i;
     unsigned j;
@@ -388,9 +398,14 @@ int PASCAL WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command_line, i
         return 1;
     }
     child = (HINSTANCE)child_result;
-    while (GetModuleUsage(child) != 0)
+    /* Wait for the module, not the instance: an instance handle can be
+       given to another task once the child has ended. */
+    module = GetModuleHandle((LPCSTR)MAKELP(0, child));
+    while (module != 0 && GetModuleUsage(module) != 0 &&
+           GetModuleFileName(module, loaded, sizeof(loaded)) && lstrcmpi(loaded, target) == 0)
         wait_tick();
-    delete_file(target);
+    for (i = 0; !delete_until_gone(target) && i < 600; ++i)
+        wait_tick();
     if (source_path[0] != 0)
         delete_file(source_path);
     return 0;
